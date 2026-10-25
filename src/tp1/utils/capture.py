@@ -1,29 +1,36 @@
 import os
 from collections import Counter
 
-from scapy.all import rdpcap, sniff
+from scapy.all import Raw, TCP, rdpcap, sniff
 
-from src.tp1.utils.lib import choose_interface
+from tp1.utils.lib import choose_interface
 from tp1.utils.config import logger
 
-PCAP_FILE = "tp1-grp-4-191ba9.pcap"
-IGNORED_LAYERS = {"Ether", "Raw", "Padding"}
+IGNORED_LAYERS = {"Raw", "Padding"}
+LAYER_NAMES = {"Ether": "Ethernet"}
+HTTP_PORTS = {80}
+
 
 class Capture:
-    def __init__(self) -> None:
-        self.interface = choose_interface()
+    def __init__(self, pcap_file: str | None = None, iface: str | None = None) -> None:
+        self.pcap_file = pcap_file
+        self.interface = iface or ""
         self.summary = ""
         self.packets = []
         self.protocols = Counter()
 
     def capture_traffic(self) -> None:
         """
-        Read the pcap file if it exists, otherwise capture from the interface
+        Read the pcap file if given, otherwise capture from the interface
         """
-        if os.path.exists(PCAP_FILE):
-            logger.info(f"Reading packets from {PCAP_FILE}")
-            self.packets = rdpcap(PCAP_FILE)
+        if self.pcap_file:
+            if not os.path.exists(self.pcap_file):
+                raise FileNotFoundError(f"Fichier pcap introuvable : {self.pcap_file}")
+            logger.info(f"Reading packets from {self.pcap_file}")
+            self.packets = rdpcap(self.pcap_file)
         else:
+            if not self.interface:
+                self.interface = choose_interface()
             logger.info(f"Capture traffic from interface {self.interface}")
             self.packets = sniff(iface=self.interface or None, timeout=30)
         logger.info(f"{len(self.packets)} packets loaded")
@@ -40,9 +47,21 @@ class Capture:
         """
         self.protocols = Counter()
         for packet in self.packets:
+            seen = set()
             for layer in packet.layers():
-                if layer.__name__ not in IGNORED_LAYERS:
-                    self.protocols[layer.__name__] += 1
+                name = layer.__name__
+                if name in IGNORED_LAYERS:
+                    continue
+                seen.add(LAYER_NAMES.get(name, name))
+
+            if packet.haslayer(TCP) and packet.haslayer(Raw):
+                tcp = packet[TCP]
+                if tcp.sport in HTTP_PORTS or tcp.dport in HTTP_PORTS:
+                    seen.add("HTTP")
+
+            for name in seen:
+                self.protocols[name] += 1
+
         result = ", ".join(f"{name}: {count}" for name, count in self.protocols.most_common())
         logger.info(f"Protocols: {result}")
         return result
@@ -50,14 +69,14 @@ class Capture:
     def analyse(self, protocols: str) -> None:
         """
         Analyse all captured data and return statement
-        Si un tra c est illégitime (exemple : Injection SQL, ARP
-        Spoo ng, etc)
+        Si un trafic est illégitime (exemple : Injection SQL, ARP
+        Spoofing, etc)
         a Noter la tentative d'attaque.
         b Relever le protocole ainsi que l'adresse réseau/physique
         de l'attaquant.
         c (FACULTATIF) Opérer le blocage de la machine
         attaquante.
-        Sinon a cher que tout va bien
+        Sinon afficher que tout va bien
         """
         all_protocols = self.get_all_protocols()
         sort = self.sort_network_protocols()
@@ -78,4 +97,5 @@ class Capture:
         Generate summary
         """
         summary = ""
+        return summary
         return summary
