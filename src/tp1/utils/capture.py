@@ -1,9 +1,11 @@
+import json
 import os
 from collections import Counter
 
 from scapy.all import TCP, Raw, rdpcap, sniff
 
 from tp1.utils.config import logger
+from tp1.utils.detector import Detector
 from tp1.utils.lib import choose_interface
 
 IGNORED_LAYERS = {"Raw", "Padding"}
@@ -18,6 +20,8 @@ class Capture:
         self.summary = ""
         self.packets = []
         self.protocols = Counter()
+        self.attacks: list[dict[str, str]] = []
+        self.flag = ""
 
     def capture_traffic(self) -> None:
         """
@@ -39,7 +43,7 @@ class Capture:
         """
         Sort and return all captured network protocols
         """
-        return ""
+        return ", ".join(sorted(self.protocols))
 
     def get_all_protocols(self) -> str:
         """
@@ -83,6 +87,14 @@ class Capture:
         logger.debug(f"All protocols: {all_protocols}")
         logger.debug(f"Sorted protocols: {sort}")
 
+        detector = Detector(self.packets)
+        self.attacks = detector.run()
+        self.flag = detector.flag
+        for attack in self.attacks:
+            logger.warning(f"Attaque détectée : {attack['type']} depuis {attack['attacker']}")
+        if not self.attacks:
+            logger.info("Aucune attaque détectée, tout va bien")
+
         self.summary = self._gen_summary()
 
     def get_summary(self) -> str:
@@ -96,5 +108,30 @@ class Capture:
         """
         Generate summary
         """
-        summary = ""
-        return summary
+        lines = [f"{len(self.packets)} paquets analysés."]
+        if self.attacks:
+            for attack in self.attacks:
+                lines.append(f"Attaque {attack['type']} depuis {attack['attacker']}.")
+        else:
+            lines.append("Aucune attaque détectée, tout va bien.")
+        if self.flag:
+            lines.append(f"Flag : {self.flag}")
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        """
+        Return the result in the format expected by report.json
+        """
+        return {
+            "protocols": dict(self.protocols),
+            "attacks": self.attacks,
+            "flag": self.flag,
+        }
+
+    def save_json(self, filename: str) -> None:
+        """
+        Write the result in a JSON file
+        """
+        with open(filename, "w", encoding="utf-8") as file:
+            json.dump(self.to_dict(), file, indent=2)
+        logger.info(f"Report written to {filename}")
