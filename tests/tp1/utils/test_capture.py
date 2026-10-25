@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 from src.tp1.utils.capture import Capture
@@ -17,11 +18,12 @@ def test_given_capture_when_capture_traffic_then_interface_is_set():
     capture = Capture()
 
     # When
-    capture.capture_traffic()
+    with patch("src.tp1.utils.capture.sniff", return_value=[]) as mock_sniff:
+        capture.capture_traffic()
 
     # Then
-    # This is a minimal test since the method doesn't do much yet
-    assert capture.interface == ""
+    mock_sniff.assert_called_once()
+    assert capture.packets == []
 
 
 def test_sort_network_protocols():
@@ -32,7 +34,14 @@ def test_sort_network_protocols():
     result = capture.sort_network_protocols()
 
     # Then
-    assert result == ""  # Method currently returns None
+    assert result == ""
+
+
+def test_sort_network_protocols_sorted():
+    capture = Capture()
+    capture.protocols.update({"TCP": 2, "ARP": 1})
+
+    assert capture.sort_network_protocols() == "ARP, TCP"
 
 
 def test_get_all_protocols():
@@ -43,7 +52,7 @@ def test_get_all_protocols():
     result = capture.get_all_protocols()
 
     # Then
-    assert result == ""  # Method currently returns None
+    assert result == ""
 
 
 def test_analyse():
@@ -86,4 +95,27 @@ def test_gen_summary():
     result = capture._gen_summary()
 
     # Then
-    assert result == ""  # Method currently returns empty string
+    assert "Aucune attaque" in result
+
+
+def test_to_dict():
+    capture = Capture()
+    capture.protocols.update({"TCP": 3})
+    capture.attacks = [{"type": "port_scan", "attacker": "10.0.0.5"}]
+    capture.flag = "ESGI{test}"
+
+    assert capture.to_dict() == {
+        "protocols": {"TCP": 3},
+        "attacks": [{"type": "port_scan", "attacker": "10.0.0.5"}],
+        "flag": "ESGI{test}",
+    }
+
+
+def test_save_json(tmp_path):
+    capture = Capture()
+    capture.flag = "ESGI{test}"
+    out = tmp_path / "report.json"
+
+    capture.save_json(str(out))
+
+    assert json.loads(out.read_text())["flag"] == "ESGI{test}"
