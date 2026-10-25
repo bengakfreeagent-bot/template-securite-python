@@ -1,4 +1,5 @@
 from unittest.mock import patch
+
 from src.tp1.utils.capture import Capture
 
 

@@ -1,4 +1,5 @@
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import MagicMock, mock_open, patch
+
 from src.tp1.utils.report import Report
 
 

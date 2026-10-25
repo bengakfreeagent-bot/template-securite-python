@@ -1,29 +1,34 @@
-# Template code Sécurité Python
+# TP1 - Analyse de trafic réseau (Sécurité Python, ESGI)
 
 ## Description
 
-Projet contenant les modèles de TP pour le cours de sécurité Python de 4e année de l'ESGI.
+Outil en ligne de commande qui analyse un trafic réseau avec Scapy :
+
+- lecture d'un fichier `.pcap` (ou capture en direct sur une interface) ;
+- comptage des paquets par protocole (Ethernet, IP, TCP, UDP, ARP, ICMP, DNS, HTTP) ;
+- détection du trafic illégitime (ARP spoofing, injection SQL...) ;
+- génération d'un rapport PDF et d'un rapport JSON.
 
 ## Installation
 
-Faire un fork puis un clone du projet :
-
 ```bash
-git clone git@github.com:<VotreNom>/template-securite-python.git
-```
-
-Installer les dépendances :
-
-```bash
-cd template-securite-python
-poetry lock
 poetry install
 ```
 
 ## Utilisation
 
-Lancer le projet :
+```bash
+poetry run tp1 --pcap FICHIER.pcap --out report.json
+```
+
+| Option    | Description                                  | Défaut        |
+|-----------|----------------------------------------------|---------------|
+| `--pcap`  | Fichier pcap à analyser (sinon capture live) | aucun         |
+| `--out`   | Fichier JSON de sortie                       | `report.json` |
+| `--iface` | Interface réseau pour la capture en direct   | aucune        |
+
+## Tests
 
 ```bash
-poetry run tp1
+poetry run pytest
 ```

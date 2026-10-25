@@ -1,10 +1,10 @@
 import os
 from collections import Counter
 
-from scapy.all import Raw, TCP, rdpcap, sniff
+from scapy.all import TCP, Raw, rdpcap, sniff
 
-from tp1.utils.lib import choose_interface
 from tp1.utils.config import logger
+from tp1.utils.lib import choose_interface
 
 IGNORED_LAYERS = {"Raw", "Padding"}
 LAYER_NAMES = {"Ether": "Ethernet"}
@@ -97,5 +97,4 @@ class Capture:
         Generate summary
         """
         summary = ""
-        return summary
         return summary
