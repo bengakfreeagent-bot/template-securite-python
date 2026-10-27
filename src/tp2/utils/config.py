@@ -1,3 +1,8 @@
-from src.config import logging
+import logging
 
-logger = logging.getLogger("TP2")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+)
+
+logger = logging.getLogger("tp2")
