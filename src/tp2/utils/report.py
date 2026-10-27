@@ -5,19 +5,20 @@ from fpdf import FPDF
 
 from tp2.utils.config import logger
 
-IOC_KEYS = ("domains", "ips", "urls", "mutex", "registry")
+IOC_KEYS = ["domains", "ips", "urls", "mutex", "registry"]
 
 
-def build_output(result: dict) -> dict:
-    """Met le resultat au format JSON attendu par la correction."""
-    iocs = result.get("iocs", {})
+def build_output(result):
+    iocs = {}
+    for k in IOC_KEYS:
+        iocs[k] = list(result.get("iocs", {}).get(k, []))
     return {
         "sha256": result["sha256"],
         "md5": result["md5"],
         "size": result["size"],
         "entropy": result["entropy"],
         "file_type": result["file_type"],
-        "iocs": {key: list(iocs.get(key, [])) for key in IOC_KEYS},
+        "iocs": iocs,
         "imports": list(result.get("imports", [])),
         "yara_matches": list(result.get("yara_matches", [])),
         "family_guess": result.get("family_guess", "unknown"),
@@ -28,47 +29,43 @@ def build_output(result: dict) -> dict:
     }
 
 
-def pdf_text(value: object) -> str:
-    """Rend le texte compatible avec les polices de base de fpdf."""
+def pdf_text(value):
     return str(value).encode("latin-1", errors="replace").decode("latin-1")
 
 
-def write_pdf(result: dict, path: Path) -> None:
-    """Ecrit un rapport PDF lisible pour un echantillon."""
+def write_pdf(result, path):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    width = pdf.w - pdf.l_margin - pdf.r_margin
+    w = pdf.w - pdf.l_margin - pdf.r_margin
 
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.multi_cell(width, 10, "Rapport de triage malware", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
-    pdf.multi_cell(
-        width,
-        6,
-        pdf_text(f"Fichier : {result.get('name', '')}"),
-        new_x="LMARGIN",
-        new_y="NEXT",
-    )
+    def line(text, size=9, h=5, style=""):
+        pdf.set_font("Helvetica", style, size)
+        pdf.multi_cell(w, h, pdf_text(text), wrapmode="CHAR", new_x="LMARGIN", new_y="NEXT")
 
-    def section(title: str, lines: list[str]) -> None:
+    def section(title, lines):
         pdf.ln(3)
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.multi_cell(width, 8, pdf_text(title), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "", 9)
-        if not lines:
+        line(title, 12, 8, "B")
+        if len(lines) == 0:
             lines = ["(rien)"]
-        for line in lines:
-            pdf.multi_cell(width, 5, pdf_text(line), wrapmode="CHAR", new_x="LMARGIN", new_y="NEXT")
+        for x in lines:
+            line(x)
 
+    line("Rapport de triage malware", 16, 10, "B")
+    line("Fichier : " + str(result.get("name", "")), 10, 6)
+
+    if result.get("injection"):
+        injection = "oui"
+    else:
+        injection = "non"
     section(
         "Verdict",
         [
             f"Score : {result.get('score')}/10",
             f"Famille : {result.get('family_guess')}",
-            f"MITRE ATT&CK : {', '.join(result.get('mitre_attack', []))}",
-            f"Injection de prompt detectee : {'oui' if result.get('injection') else 'non'}",
-            f"Flag : {result.get('flag') or '-'}",
+            "MITRE ATT&CK : " + ", ".join(result.get("mitre_attack", [])),
+            "Injection de prompt detectee : " + injection,
+            "Flag : " + (result.get("flag") or "-"),
         ],
     )
     section("Resume", [result.get("llm_summary", "")])
@@ -82,25 +79,40 @@ def write_pdf(result: dict, path: Path) -> None:
             f"Entropie : {result.get('entropy')}",
         ],
     )
+
     iocs = result.get("iocs", {})
-    for key in (*IOC_KEYS, "paths"):
-        section(f"IOC - {key}", list(iocs.get(key, []))[:50])
+    for k in IOC_KEYS + ["paths"]:
+        section("IOC - " + k, list(iocs.get(k, []))[:50])
     section("YARA", result.get("yara_matches", []))
     section("Imports", [", ".join(result.get("imports", [])[:150])])
-    sections = [f"{s['name']} - taille {s['size']} - entropie {s['entropy']}" for s in result.get("sections", [])]
+
+    sections = []
+    for s in result.get("sections", []):
+        sections.append(f"{s['name']} - taille {s['size']} - entropie {s['entropy']}")
     section("Sections", sections)
+
     pdf.output(str(path))
 
 
-def generate_report(result: dict, out_dir: str | Path, pdf: bool = True) -> Path:
-    """Ecrit le JSON <sha256>.json et le PDF associe, retourne le chemin du JSON."""
+def generate_report(result, out_dir, pdf=True):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    json_path = out / f"{result['sha256']}.json"
-    json_path.write_text(json.dumps(build_output(result), indent=2, ensure_ascii=False), encoding="utf-8")
+
+    data = build_output(result)
+    names = [result["sha256"] + ".json"]
+    if result.get("name"):
+        names.append(result["name"] + ".triage.json")
+        stem = Path(result["name"]).stem
+        if stem != result["name"]:
+            names.append(stem + ".triage.json")
+    for name in names:
+        with open(out / name, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    json_path = out / names[0]
+
     if pdf:
         try:
-            write_pdf(result, out / f"{result['sha256']}.pdf")
+            write_pdf(result, out / (result["sha256"] + ".pdf"))
         except Exception as e:
-            logger.warning(f"PDF non genere pour {result['sha256']} : {e}")
+            logger.warning(f"erreur PDF : {e}")
     return json_path

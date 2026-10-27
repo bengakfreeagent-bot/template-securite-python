@@ -4,13 +4,10 @@ import yara
 
 from tp2.utils.config import logger
 
-RULE_EXTENSIONS = {".yar", ".yara", ".rule", ".rules"}
-
 CUSTOM_RULES = r"""
 rule Custom_Prompt_Injection
 {
     meta:
-        author = "binome"
         description = "Texte qui essaie de manipuler un LLM"
     strings:
         $en1 = "ignore previous instructions" nocase ascii wide
@@ -30,21 +27,18 @@ rule Custom_Prompt_Injection
 rule Custom_Run_Key_Persistence
 {
     meta:
-        author = "binome"
-        description = "Persistance par cle Run du registre"
+        description = "Persistance avec la cle Run"
     strings:
         $run1 = "CurrentVersion\\Run" nocase ascii wide
         $run2 = "CurrentVersion\\\\Run" nocase ascii wide
-        $api = "RegSetValueEx" ascii wide
     condition:
-        any of ($run*) or ($api and any of ($run*))
+        any of them
 }
 
 rule Custom_Network_Beacon
 {
     meta:
-        author = "binome"
-        description = "Combinaison d'API reseau et d'URL"
+        description = "API reseau et URL"
     strings:
         $url1 = "http://" nocase ascii wide
         $url2 = "https://" nocase ascii wide
@@ -59,49 +53,54 @@ rule Custom_Network_Beacon
 
 
 class YaraScanner:
-    """Charge les regles YARA d'un dossier et ajoute nos regles perso."""
-
-    def __init__(self, rules_dir: str | Path | None = None) -> None:
-        self.rules_dir = Path(rules_dir) if rules_dir else None
+    def __init__(self, rules_dir=None):
+        self.rules_dir = None
+        if rules_dir:
+            self.rules_dir = Path(rules_dir)
         self.rules = self._compile()
 
-    def _rule_files(self) -> dict[str, str]:
-        files: dict[str, str] = {}
-        if not self.rules_dir or not self.rules_dir.is_dir():
-            if self.rules_dir:
-                logger.warning(f"dossier de regles introuvable : {self.rules_dir}")
+    def _rule_files(self):
+        files = {}
+        if self.rules_dir is None:
             return files
-        for i, path in enumerate(sorted(self.rules_dir.rglob("*"))):
-            if path.is_file() and path.suffix.lower() in RULE_EXTENSIONS:
-                try:
-                    yara.compile(filepath=str(path))
-                except yara.Error as e:
-                    logger.warning(f"regle ignoree {path.name} : {e}")
-                    continue
-                files[f"r{i}_{path.stem}"] = str(path)
+        if not self.rules_dir.is_dir():
+            logger.warning(f"dossier de regles introuvable : {self.rules_dir}")
+            return files
+
+        i = 0
+        for path in sorted(self.rules_dir.rglob("*")):
+            i += 1
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in [".yar", ".yara", ".rule", ".rules"]:
+                continue
+            try:
+                yara.compile(filepath=str(path))
+            except yara.Error as e:
+                logger.warning(f"regle ignoree {path.name} : {e}")
+                continue
+            files[f"r{i}_{path.stem}"] = str(path)
         return files
 
-    def _compile(self) -> list[yara.Rules]:
-        compiled = []
+    def _compile(self):
+        rules = []
         files = self._rule_files()
-        if files:
-            compiled.append(yara.compile(filepaths=files))
-            logger.info(f"{len(files)} fichier(s) de regles charges")
-        compiled.append(yara.compile(source=CUSTOM_RULES))
-        return compiled
+        if len(files) > 0:
+            rules.append(yara.compile(filepaths=files))
+            logger.info(f"{len(files)} fichier(s) de regles")
+        rules.append(yara.compile(source=CUSTOM_RULES))
+        return rules
 
-    def scan(self, data: bytes) -> list[str]:
-        """Retourne la liste des regles qui matchent."""
-        names = set()
+    def scan(self, data):
+        res = set()
         for rules in self.rules:
             try:
-                for match in rules.match(data=data, timeout=60):
-                    names.add(match.rule)
+                for m in rules.match(data=data, timeout=60):
+                    res.add(m.rule)
             except yara.Error as e:
-                logger.warning(f"erreur scan yara : {e}")
-        return sorted(names)
+                logger.warning(f"erreur yara : {e}")
+        return sorted(res)
 
 
-def yara_scan(data: bytes, rules_dir: str | Path | None = "rules") -> list[str]:
-    """Scanne des donnees avec les regles du dossier et nos regles."""
+def yara_scan(data, rules_dir="rules"):
     return YaraScanner(rules_dir).scan(data)

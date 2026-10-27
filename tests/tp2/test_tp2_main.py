@@ -17,4 +17,5 @@ def test_main(tmp_path, monkeypatch):
     rules.mkdir()
     out = tmp_path / "out"
     assert main(["--samples", str(samples), "--rules", str(rules), "--out", str(out)]) == 0
-    assert len(list(out.glob("*.json"))) == 1
+    assert (out / "x.txt.triage.json").exists()
+    assert (out / "x.triage.json").exists()
